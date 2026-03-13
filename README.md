@@ -1,4 +1,4 @@
-# aipr
+# OpenRouter AI PRs
 
 `aipr` is a small Go CLI that creates a GitHub PR from your current branch using commits that differ from a configured base branch, and uses OpenRouter to generate the PR title/body.
 
