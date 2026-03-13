@@ -1,70 +1,83 @@
 # OpenRouter AI PRs
 
-`aipr` is a small Go CLI that creates a GitHub PR from your current branch using commits that differ from a configured base branch, and uses OpenRouter to generate the PR title/body.
+`aipr` creates a GitHub pull request from your current branch using AI-generated title/body based on commits that differ from your configured base branch.
 
-## Features
+## What it does
 
-- Per-repo base branch mapping stored globally in `~/.aipr/config.json`
-- Default base branch is `master`
-- AI-generated PR title and body via OpenRouter
-- PR creation via GitHub CLI (`gh`)
+- Generates PR title and description with OpenRouter
+- Uses `gh pr create` to open the PR
+- Stores config globally in `~/.aipr/config.json`
+- Lets you set a different base branch per repo path
 
 ## Requirements
 
 - `git`
-- `gh` (authenticated: `gh auth login`)
+- `gh` (authenticated with `gh auth login`)
 - Go 1.22+
-- Run `aipr config openrouter-api-key <your-api-key>`
 
-## Install globally
+## Install
 
-From this repository:
+From this repo:
 
 ```bash
 go install .
 ```
 
-Make sure your Go bin directory is in `PATH` (typically `$(go env GOPATH)/bin`).
+Make sure your Go bin path is in `PATH` (usually `$(go env GOPATH)/bin`).
 
-## Usage
+## Quick start
 
-Set the base branch for the current repo (stored globally by repo path):
-
-```bash
-aipr config base develop
-```
-
-Set the global OpenRouter API key:
+1) Set your OpenRouter API key:
 
 ```bash
 aipr config openrouter-api-key <your-api-key>
 ```
 
-Set the global OpenRouter model:
+2) (Optional) Set the model globally:
 
 ```bash
 aipr config model qwen/qwen3.5-flash-02-23
 ```
 
-Create a PR from the current branch:
+3) Set base branch for the current repo:
+
+```bash
+aipr config base develop
+```
+
+4) Run it:
 
 ```bash
 aipr
 ```
 
-## Behavior
-
-When you run `aipr`:
-
-1. It resolves the current git repo root.
-2. It looks up the repo path in `~/.aipr/config.json` for `base`; falls back to `master`.
-3. It reads the global OpenRouter key from `~/.aipr/config.json`.
-4. It finds commits in `<base>..HEAD`.
-5. It resolves the OpenRouter model (global config, then default `qwen/qwen3.5-flash-02-23`).
-6. It sends commit history to OpenRouter to generate a PR title/body.
-7. If AI generation fails, it exits with an error and does not create a PR.
-8. It runs (only when AI generation succeeds):
+## Commands
 
 ```bash
-gh pr create --base <base> --head <current-branch> --title <generated-title> --body <generated-body>
+aipr
+aipr config base <branch>
+aipr config openrouter-api-key <api-key>
+aipr config model <openrouter-model>
 ```
+
+## Example
+
+```bash
+# On feature branch: feat/better-readme
+aipr config base master
+aipr config model qwen/qwen3.5-flash-02-23
+aipr
+```
+
+Expected flow:
+
+- `aipr` finds commits in `master..feat/better-readme`
+- sends commit context to OpenRouter
+- receives generated PR title/body
+- runs `gh pr create --base master --head feat/better-readme ...`
+
+## Notes
+
+- If no commits differ from base, no PR is created.
+- If AI generation fails, `aipr` exits with an error (no fallback).
+- Default base branch is `master` if none is configured for the repo.
