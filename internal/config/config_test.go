@@ -52,3 +52,27 @@ func TestLoadMalformedConfig(t *testing.T) {
 		t.Fatal("expected parse error, got nil")
 	}
 }
+
+func TestSaveAndLoadGlobalRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error: %v", err)
+	}
+
+	want := GlobalConfig{OpenRouterAPIKey: "test-key"}
+	if err := SaveGlobal(want); err != nil {
+		t.Fatalf("SaveGlobal() error: %v", err)
+	}
+
+	got, err := LoadGlobal()
+	if err != nil {
+		t.Fatalf("LoadGlobal() error: %v", err)
+	}
+	if got.OpenRouterAPIKey != want.OpenRouterAPIKey {
+		t.Fatalf("expected api key %q, got %q", want.OpenRouterAPIKey, got.OpenRouterAPIKey)
+	}
+}

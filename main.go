@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
+	"aipr/internal/ai"
 	"aipr/internal/config"
 	"aipr/internal/gh"
 	"aipr/internal/git"
-	"aipr/internal/pr"
 )
 
 const defaultBaseBranch = "master"
@@ -38,15 +38,22 @@ func runConfig(args []string) error {
 		return errors.New("missing config subcommand\n\n" + usage())
 	}
 
-	if args[0] != "base" {
+	switch args[0] {
+	case "base":
+		return runConfigBase(args[1:])
+	case "openrouter-api-key":
+		return runConfigOpenRouterAPIKey(args[1:])
+	default:
 		return fmt.Errorf("unknown config subcommand %q\n\n%s", args[0], usage())
 	}
+}
 
-	if len(args) != 2 {
+func runConfigBase(args []string) error {
+	if len(args) != 1 {
 		return errors.New("usage: aipr config base <branch>")
 	}
 
-	branch := strings.TrimSpace(args[1])
+	branch := strings.TrimSpace(args[0])
 	if branch == "" {
 		return errors.New("branch name cannot be empty")
 	}
@@ -68,6 +75,33 @@ func runConfig(args []string) error {
 	}
 
 	fmt.Printf("saved base branch %q to %s\n", branch, cfgPath)
+	return nil
+}
+
+func runConfigOpenRouterAPIKey(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: aipr config openrouter-api-key <api-key>")
+	}
+
+	apiKey := strings.TrimSpace(args[0])
+	if apiKey == "" {
+		return errors.New("api key cannot be empty")
+	}
+
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return err
+	}
+	cfg.OpenRouterAPIKey = apiKey
+	if err := config.SaveGlobal(cfg); err != nil {
+		return err
+	}
+
+	cfgPath, err := config.GlobalPath()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("saved OpenRouter API key to %s\n", cfgPath)
 	return nil
 }
 
@@ -110,8 +144,15 @@ func runCreatePR() error {
 		return nil
 	}
 
-	title := pr.GenerateTitle(commits)
-	body := pr.GenerateBody(commits)
+	apiKey, err := resolveOpenRouterAPIKey()
+	if err != nil {
+		return err
+	}
+
+	title, body, err := ai.GeneratePRTitleBody(apiKey, base, currentBranch, commits)
+	if err != nil {
+		return fmt.Errorf("AI generation failed: %w", err)
+	}
 
 	if err := gh.CreatePR(repoRoot, gh.CreatePROptions{
 		BaseBranch: base,
@@ -130,8 +171,26 @@ func usage() string {
 	return `Usage:
   aipr
   aipr config base <branch>
+  aipr config openrouter-api-key <api-key>
 
 Commands:
   (no args)           Create a PR from current branch commits.
-  config base <name>  Save default base branch for this repository.`
+  config base <name>  Save default base branch for this repository.
+  config openrouter-api-key <key>
+                     Save a global OpenRouter API key.`
+}
+
+func resolveOpenRouterAPIKey() (string, error) {
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return "", err
+	}
+	if key := strings.TrimSpace(cfg.OpenRouterAPIKey); key != "" {
+		return key, nil
+	}
+
+	if key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")); key != "" {
+		return key, nil
+	}
+	return "", fmt.Errorf("missing OpenRouter API key; set it with `aipr config openrouter-api-key <api-key>`")
 }
