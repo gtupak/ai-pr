@@ -10,55 +10,14 @@ import (
 )
 
 const (
-	localFileName  = ".aipr.json"
 	globalDirName  = ".aipr"
 	globalFileName = "config.json"
 )
 
-type Config struct {
-	Base string `json:"base"`
-}
-
-func Path(repoRoot string) string {
-	return filepath.Join(repoRoot, localFileName)
-}
-
-func Load(repoRoot string) (Config, error) {
-	cfgPath := Path(repoRoot)
-	b, err := os.ReadFile(cfgPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return Config{}, nil
-	}
-	if err != nil {
-		return Config{}, fmt.Errorf("read %s: %w", cfgPath, err)
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", cfgPath, err)
-	}
-	cfg.Base = strings.TrimSpace(cfg.Base)
-	return cfg, nil
-}
-
-func Save(repoRoot string, cfg Config) error {
-	cfg.Base = strings.TrimSpace(cfg.Base)
-
-	cfgPath := Path(repoRoot)
-	b, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	b = append(b, '\n')
-
-	if err := os.WriteFile(cfgPath, b, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", cfgPath, err)
-	}
-	return nil
-}
-
 type GlobalConfig struct {
-	OpenRouterAPIKey string `json:"openrouter_api_key"`
+	OpenRouterAPIKey string            `json:"openrouter_api_key"`
+	OpenRouterModel  string            `json:"openrouter_model,omitempty"`
+	RepoBaseBranches map[string]string `json:"repo_base_branches,omitempty"`
 }
 
 func GlobalPath() (string, error) {
@@ -88,6 +47,10 @@ func LoadGlobal() (GlobalConfig, error) {
 		return GlobalConfig{}, fmt.Errorf("parse %s: %w", cfgPath, err)
 	}
 	cfg.OpenRouterAPIKey = strings.TrimSpace(cfg.OpenRouterAPIKey)
+	cfg.OpenRouterModel = strings.TrimSpace(cfg.OpenRouterModel)
+	if cfg.RepoBaseBranches == nil {
+		cfg.RepoBaseBranches = map[string]string{}
+	}
 	return cfg, nil
 }
 
@@ -98,6 +61,25 @@ func SaveGlobal(cfg GlobalConfig) error {
 	}
 
 	cfg.OpenRouterAPIKey = strings.TrimSpace(cfg.OpenRouterAPIKey)
+	cfg.OpenRouterModel = strings.TrimSpace(cfg.OpenRouterModel)
+	if cfg.RepoBaseBranches == nil {
+		cfg.RepoBaseBranches = map[string]string{}
+	}
+	for repoPath, branch := range cfg.RepoBaseBranches {
+		cleanRepoPath := strings.TrimSpace(repoPath)
+		cleanBranch := strings.TrimSpace(branch)
+		if cleanRepoPath == "" || cleanBranch == "" {
+			delete(cfg.RepoBaseBranches, repoPath)
+			continue
+		}
+		if cleanRepoPath != repoPath {
+			delete(cfg.RepoBaseBranches, repoPath)
+			cfg.RepoBaseBranches[cleanRepoPath] = cleanBranch
+			continue
+		}
+		cfg.RepoBaseBranches[repoPath] = cleanBranch
+	}
+
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal global config: %w", err)
@@ -111,4 +93,51 @@ func SaveGlobal(cfg GlobalConfig) error {
 		return fmt.Errorf("write %s: %w", cfgPath, err)
 	}
 	return nil
+}
+
+func SetRepoBaseBranch(repoRoot, branch string) error {
+	repoKey, err := normalizeRepoPath(repoRoot)
+	if err != nil {
+		return err
+	}
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return fmt.Errorf("branch cannot be empty")
+	}
+
+	cfg, err := LoadGlobal()
+	if err != nil {
+		return err
+	}
+	if cfg.RepoBaseBranches == nil {
+		cfg.RepoBaseBranches = map[string]string{}
+	}
+	cfg.RepoBaseBranches[repoKey] = branch
+	return SaveGlobal(cfg)
+}
+
+func GetRepoBaseBranch(repoRoot string) (string, error) {
+	repoKey, err := normalizeRepoPath(repoRoot)
+	if err != nil {
+		return "", err
+	}
+
+	cfg, err := LoadGlobal()
+	if err != nil {
+		return "", err
+	}
+	branch := strings.TrimSpace(cfg.RepoBaseBranches[repoKey])
+	return branch, nil
+}
+
+func normalizeRepoPath(repoRoot string) (string, error) {
+	repoRoot = strings.TrimSpace(repoRoot)
+	if repoRoot == "" {
+		return "", fmt.Errorf("repo path cannot be empty")
+	}
+	absPath, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute repo path: %w", err)
+	}
+	return filepath.Clean(absPath), nil
 }

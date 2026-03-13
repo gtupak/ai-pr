@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 )
 
 const (
-	defaultModel = "openai/gpt-4o-mini"
+	defaultModel = "qwen/qwen3.5-flash-02-23"
 	endpointURL  = "https://openrouter.ai/api/v1/chat/completions"
 )
 
@@ -39,13 +38,13 @@ type openRouterResponse struct {
 	} `json:"error,omitempty"`
 }
 
-func GeneratePRTitleBody(apiKey, baseBranch, headBranch string, commits []git.Commit) (string, string, error) {
+func GeneratePRTitleBody(apiKey, model, baseBranch, headBranch string, commits []git.Commit) (string, string, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return "", "", fmt.Errorf("OpenRouter API key is required to generate PR content")
 	}
 
-	model := strings.TrimSpace(os.Getenv("AIPR_OPENROUTER_MODEL"))
+	model = strings.TrimSpace(model)
 	if model == "" {
 		model = defaultModel
 	}
@@ -112,13 +111,18 @@ func GeneratePRTitleBody(apiKey, baseBranch, headBranch string, commits []git.Co
 	return title, body, nil
 }
 
+func DefaultModel() string {
+	return defaultModel
+}
+
 func buildPrompt(baseBranch, headBranch string, commits []git.Commit) string {
 	var b strings.Builder
 	b.WriteString("Create a pull request title and body.\n")
 	b.WriteString("Constraints:\n")
 	b.WriteString("- Keep title under 72 chars.\n")
 	b.WriteString("- Body should include sections: Summary and Testing.\n")
-	b.WriteString("- Testing section may include TODO checklist if unknown.\n")
+	b.WriteString("- Do not include TODO, TBD, FIXME, or placeholder items.\n")
+	b.WriteString("- Testing section must only include concrete executed/planned checks without TODOs.\n")
 	b.WriteString("- No markdown code fences.\n\n")
 	b.WriteString("Repository context:\n")
 	b.WriteString("- Base branch: " + baseBranch + "\n")
@@ -162,6 +166,7 @@ func parseTitleBody(raw string) (string, string, error) {
 	}
 
 	body := strings.TrimSpace(strings.Join(lines[bodyStart:], "\n"))
+	body = stripTODOLines(body)
 	if body == "" {
 		return "", "", fmt.Errorf("OpenRouter response BODY is empty")
 	}
@@ -187,4 +192,17 @@ func stripFences(s string) string {
 
 func sanitize(s string) string {
 	return strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+}
+
+func stripTODOLines(body string) string {
+	lines := strings.Split(body, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		upper := strings.ToUpper(line)
+		if strings.Contains(upper, "TODO") || strings.Contains(upper, "TBD") || strings.Contains(upper, "FIXME") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return strings.TrimSpace(strings.Join(filtered, "\n"))
 }

@@ -6,48 +6,47 @@ import (
 	"testing"
 )
 
-func TestLoadMissingFileReturnsEmptyConfig(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := t.TempDir()
-	cfg, err := Load(repoRoot)
-	if err != nil {
-		t.Fatalf("Load() unexpected error: %v", err)
+func TestLoadGlobalMissingFileReturnsEmptyConfig(t *testing.T) {
+	home := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error: %v", err)
 	}
-	if cfg.Base != "" {
-		t.Fatalf("expected empty base, got %q", cfg.Base)
+
+	cfg, err := LoadGlobal()
+	if err != nil {
+		t.Fatalf("LoadGlobal() unexpected error: %v", err)
+	}
+	if cfg.OpenRouterAPIKey != "" {
+		t.Fatalf("expected empty OpenRouter key, got %q", cfg.OpenRouterAPIKey)
+	}
+	if len(cfg.RepoBaseBranches) != 0 {
+		t.Fatalf("expected empty repo map, got %#v", cfg.RepoBaseBranches)
 	}
 }
 
-func TestSaveAndLoadRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := t.TempDir()
-	want := Config{Base: "develop"}
-
-	if err := Save(repoRoot, want); err != nil {
-		t.Fatalf("Save() error: %v", err)
+func TestLoadGlobalMalformedConfig(t *testing.T) {
+	home := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error: %v", err)
 	}
 
-	got, err := Load(repoRoot)
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
+	cfgPath := filepath.Join(home, ".aipr", "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
 	}
-	if got.Base != want.Base {
-		t.Fatalf("expected base %q, got %q", want.Base, got.Base)
-	}
-}
-
-func TestLoadMalformedConfig(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := t.TempDir()
-	cfgPath := filepath.Join(repoRoot, ".aipr.json")
 	if err := os.WriteFile(cfgPath, []byte("{invalid"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
 
-	_, err := Load(repoRoot)
+	_, err := LoadGlobal()
 	if err == nil {
 		t.Fatal("expected parse error, got nil")
 	}
@@ -74,5 +73,57 @@ func TestSaveAndLoadGlobalRoundTrip(t *testing.T) {
 	}
 	if got.OpenRouterAPIKey != want.OpenRouterAPIKey {
 		t.Fatalf("expected api key %q, got %q", want.OpenRouterAPIKey, got.OpenRouterAPIKey)
+	}
+}
+
+func TestSaveAndLoadGlobalModelRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error: %v", err)
+	}
+
+	want := GlobalConfig{OpenRouterModel: "qwen/qwen3.5-flash-02-23"}
+	if err := SaveGlobal(want); err != nil {
+		t.Fatalf("SaveGlobal() error: %v", err)
+	}
+
+	got, err := LoadGlobal()
+	if err != nil {
+		t.Fatalf("LoadGlobal() error: %v", err)
+	}
+	if got.OpenRouterModel != want.OpenRouterModel {
+		t.Fatalf("expected model %q, got %q", want.OpenRouterModel, got.OpenRouterModel)
+	}
+}
+
+func TestSetAndGetRepoBaseBranch(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := filepath.Join(home, "work", "repo-a")
+	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll(repoRoot) error: %v", err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatalf("Setenv(HOME) error: %v", err)
+	}
+
+	if err := SetRepoBaseBranch(repoRoot, "develop"); err != nil {
+		t.Fatalf("SetRepoBaseBranch() error: %v", err)
+	}
+
+	got, err := GetRepoBaseBranch(repoRoot)
+	if err != nil {
+		t.Fatalf("GetRepoBaseBranch() error: %v", err)
+	}
+	if got != "develop" {
+		t.Fatalf("expected base branch %q, got %q", "develop", got)
 	}
 }

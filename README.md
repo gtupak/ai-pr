@@ -4,7 +4,7 @@
 
 ## Features
 
-- Repo-local base branch config in `.aipr.json`
+- Per-repo base branch mapping stored globally in `~/.aipr/config.json`
 - Default base branch is `master`
 - AI-generated PR title and body via OpenRouter
 - PR creation via GitHub CLI (`gh`)
@@ -14,10 +14,7 @@
 - `git`
 - `gh` (authenticated: `gh auth login`)
 - Go 1.22+
-
-Optional:
-- `OPENROUTER_API_KEY` environment variable (fallback if global config is not set)
-- `AIPR_OPENROUTER_MODEL` to override the default model (`openai/gpt-4o-mini`)
+- Run `aipr config openrouter-api-key <your-api-key>`
 
 ## Install globally
 
@@ -31,7 +28,7 @@ Make sure your Go bin directory is in `PATH` (typically `$(go env GOPATH)/bin`).
 
 ## Usage
 
-Set the repo-level base branch:
+Set the base branch for the current repo (stored globally by repo path):
 
 ```bash
 aipr config base develop
@@ -41,6 +38,12 @@ Set the global OpenRouter API key:
 
 ```bash
 aipr config openrouter-api-key <your-api-key>
+```
+
+Set the global OpenRouter model:
+
+```bash
+aipr config model qwen/qwen3.5-flash-02-23
 ```
 
 Create a PR from the current branch:
@@ -54,12 +57,13 @@ aipr
 When you run `aipr`:
 
 1. It resolves the current git repo root.
-2. It reads `.aipr.json` for `base`; falls back to `master`.
-3. It reads the global OpenRouter key from `~/.aipr/config.json` (or `OPENROUTER_API_KEY` fallback).
+2. It looks up the repo path in `~/.aipr/config.json` for `base`; falls back to `master`.
+3. It reads the global OpenRouter key from `~/.aipr/config.json`.
 4. It finds commits in `<base>..HEAD`.
-5. It sends commit history to OpenRouter to generate a PR title/body.
-6. If AI generation fails, it exits with an error and does not create a PR.
-7. It runs (only when AI generation succeeds):
+5. It resolves the OpenRouter model (global config, then default `qwen/qwen3.5-flash-02-23`).
+6. It sends commit history to OpenRouter to generate a PR title/body.
+7. If AI generation fails, it exits with an error and does not create a PR.
+8. It runs (only when AI generation succeeds):
 
 ```bash
 gh pr create --base <base> --head <current-branch> --title <generated-title> --body <generated-body>

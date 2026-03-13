@@ -1,6 +1,9 @@
 package ai
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseTitleBody(t *testing.T) {
 	t.Parallel()
@@ -40,5 +43,27 @@ func TestParseTitleBodyMissingBody(t *testing.T) {
 	_, _, err := parseTitleBody("TITLE: hello")
 	if err == nil {
 		t.Fatal("expected error for missing body")
+	}
+}
+
+func TestParseTitleBodyRemovesTODOLines(t *testing.T) {
+	t.Parallel()
+
+	raw := `TITLE: feat: improve logs
+BODY:
+## Summary
+- Added richer status output.
+- TODO: add integration tests.
+
+## Testing
+- [x] go test ./...
+- TBD: manual qa`
+
+	_, body, err := parseTitleBody(raw)
+	if err != nil {
+		t.Fatalf("parseTitleBody() error: %v", err)
+	}
+	if strings.Contains(strings.ToUpper(body), "TODO") || strings.Contains(strings.ToUpper(body), "TBD") {
+		t.Fatalf("body still contains TODO-like tokens: %q", body)
 	}
 }
