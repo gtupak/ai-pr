@@ -55,6 +55,7 @@ aipr
 
 ```bash
 aipr
+aipr --head-owner <github-user-or-org>
 aipr config base <branch>
 aipr config openrouter-api-key <api-key>
 aipr config model <openrouter-model>
@@ -75,6 +76,15 @@ Expected flow:
 - sends commit context to OpenRouter
 - receives generated PR title/body
 - runs `gh pr create --base master --head feat/better-readme ...`
+
+Fork workflow:
+
+```bash
+# Branch exists on your fork, PR targets upstream repo
+aipr --head-owner gtupak
+```
+
+This makes `aipr` call `gh pr create --head gtupak:<current-branch> ...`.
 
 ## Notes
 
