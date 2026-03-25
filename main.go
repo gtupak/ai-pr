@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -24,14 +25,18 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return runCreatePR()
+		return runCreatePR(createOptions{})
 	}
 
 	if args[0] == "config" {
 		return runConfig(args[1:])
 	}
 
-	return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
+	createOpts, err := parseCreateOptions(args)
+	if err != nil {
+		return err
+	}
+	return runCreatePR(createOpts)
 }
 
 func runConfig(args []string) error {
@@ -132,7 +137,33 @@ func runConfigModel(args []string) error {
 	return nil
 }
 
-func runCreatePR() error {
+type createOptions struct {
+	HeadOwner string
+}
+
+func parseCreateOptions(args []string) (createOptions, error) {
+	fs := flag.NewFlagSet("aipr", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var opts createOptions
+	fs.StringVar(&opts.HeadOwner, "head-owner", "", "GitHub owner for fork head ref (uses owner:current-branch)")
+
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, usage())
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return createOptions{}, err
+	}
+	if len(fs.Args()) > 0 {
+		return createOptions{}, fmt.Errorf("unexpected arguments: %s\n\n%s", strings.Join(fs.Args(), " "), usage())
+	}
+
+	opts.HeadOwner = strings.TrimSpace(opts.HeadOwner)
+	return opts, nil
+}
+
+func runCreatePR(opts createOptions) error {
 	step("Booting PR rocket...")
 
 	repoRoot, err := withLoaderValue("Finding git repository root", func() (string, error) {
@@ -157,6 +188,11 @@ func runCreatePR() error {
 		return err
 	}
 	ok(fmt.Sprintf("Current branch: %s", currentBranch))
+	headRef := currentBranch
+	if opts.HeadOwner != "" {
+		headRef = fmt.Sprintf("%s:%s", opts.HeadOwner, currentBranch)
+		ok(fmt.Sprintf("Using fork head ref: %s", headRef))
+	}
 
 	base, err := withLoaderValue("Resolving base branch config for this repo", func() (string, error) {
 		return config.GetRepoBaseBranch(repoRoot)
@@ -226,7 +262,7 @@ func runCreatePR() error {
 	err = withLoader("Launching gh to open the PR", func() error {
 		return gh.CreatePR(repoRoot, gh.CreatePROptions{
 			BaseBranch: base,
-			HeadBranch: currentBranch,
+			HeadBranch: headRef,
 			Title:      draft.title,
 			Body:       draft.body,
 		})
@@ -243,12 +279,14 @@ func runCreatePR() error {
 func usage() string {
 	return `Usage:
   aipr
+  aipr --head-owner <owner>
   aipr config base <branch>
   aipr config openrouter-api-key <api-key>
   aipr config model <openrouter-model>
 
 Commands:
-  (no args)           Create a PR from current branch commits.
+  (no args)                 Create a PR from current branch commits.
+  --head-owner <owner>      Use owner:current-branch as gh head ref (fork workflow).
   config base <name>  Save default base branch for this repository.
   config openrouter-api-key <key>
                      Save a global OpenRouter API key.
