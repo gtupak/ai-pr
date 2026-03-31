@@ -139,6 +139,7 @@ func runConfigModel(args []string) error {
 
 type createOptions struct {
 	HeadOwner string
+	Base      string
 }
 
 func parseCreateOptions(args []string) (createOptions, error) {
@@ -147,6 +148,7 @@ func parseCreateOptions(args []string) (createOptions, error) {
 
 	var opts createOptions
 	fs.StringVar(&opts.HeadOwner, "head-owner", "", "GitHub owner for fork head ref (uses owner:current-branch)")
+	fs.StringVar(&opts.Base, "base", "", "Target base branch for this PR (overrides repo config and default)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, usage())
@@ -160,6 +162,7 @@ func parseCreateOptions(args []string) (createOptions, error) {
 	}
 
 	opts.HeadOwner = strings.TrimSpace(opts.HeadOwner)
+	opts.Base = strings.TrimSpace(opts.Base)
 	return opts, nil
 }
 
@@ -194,17 +197,24 @@ func runCreatePR(opts createOptions) error {
 		ok(fmt.Sprintf("Using fork head ref: %s", headRef))
 	}
 
-	base, err := withLoaderValue("Resolving base branch config for this repo", func() (string, error) {
-		return config.GetRepoBaseBranch(repoRoot)
-	})
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(base) == "" {
-		base = defaultBaseBranch
-		ok(fmt.Sprintf("No custom base configured; using default %q", base))
+	var base string
+	if opts.Base != "" {
+		base = opts.Base
+		ok(fmt.Sprintf("Using base branch from --base: %s", base))
 	} else {
-		ok(fmt.Sprintf("Configured base branch: %s", base))
+		var err error
+		base, err = withLoaderValue("Resolving base branch config for this repo", func() (string, error) {
+			return config.GetRepoBaseBranch(repoRoot)
+		})
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(base) == "" {
+			base = defaultBaseBranch
+			ok(fmt.Sprintf("No custom base configured; using default %q", base))
+		} else {
+			ok(fmt.Sprintf("Configured base branch: %s", base))
+		}
 	}
 
 	baseRef, err := withLoaderValue(fmt.Sprintf("Verifying base branch reference for %q", base), func() (string, error) {
@@ -279,13 +289,16 @@ func runCreatePR(opts createOptions) error {
 func usage() string {
 	return `Usage:
   aipr
+  aipr --base <branch>
   aipr --head-owner <owner>
+  aipr --base <branch> --head-owner <owner>
   aipr config base <branch>
   aipr config openrouter-api-key <api-key>
   aipr config model <openrouter-model>
 
 Commands:
   (no args)                 Create a PR from current branch commits.
+  --base <branch>           Open PR against this branch (overrides repo config for this run).
   --head-owner <owner>      Use owner:current-branch as gh head ref (fork workflow).
   config base <name>  Save default base branch for this repository.
   config openrouter-api-key <key>
